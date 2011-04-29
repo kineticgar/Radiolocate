@@ -82,14 +82,14 @@ void SetScanParams(iwreq &iwr, const char interface[], void *pointer, __u16 leng
 
 // Query the wireless extension's version number. It will help us when we
 // parse the resulting event
-unsigned char GetWextVersion(const char interfaceName[], int socket)
+unsigned char GetWextVersion(const char interfaceName[], int sock)
 {
 	struct iwreq iwr;
 	char rangebuffer[sizeof(iw_range) * 2];  // Large enough
 	memset(rangebuffer, 0, sizeof(rangebuffer));
 
 	SetScanParams(iwr, interfaceName, (caddr_t) rangebuffer, sizeof(rangebuffer));
-	if (ioctl(socket, SIOCGIWRANGE, &iwr) < 0)
+	if (ioctl(sock, SIOCGIWRANGE, &iwr) < 0)
 	{
 		fprintf(stderr, "ERROR: %-8.16s Driver has no Wireless Extension version information\n", interfaceName);
 		return 0;
@@ -98,7 +98,7 @@ unsigned char GetWextVersion(const char interfaceName[], int socket)
 }
 
 
-std::vector<NetworkAccessPoint> GetAccessPoints(const char interface[], int socket)
+std::vector<NetworkAccessPoint> GetAccessPoints(const char interface[], int sock)
 {
 	struct iwreq iwr;                   // Wireless scan structure
 	unsigned char* res_buf = NULL;      // Buffer to hold the results of the scan
@@ -114,13 +114,13 @@ std::vector<NetworkAccessPoint> GetAccessPoints(const char interface[], int sock
 	gettimeofday(&t_start, NULL);
 	/********************************/
 
-	unsigned char wireless_extension_version = GetWextVersion(interface, socket);
+	unsigned char wireless_extension_version = GetWextVersion(interface, sock);
 	if (!wireless_extension_version)
 		return result;
 
 	// Scan for wireless access points
 	SetScanParams(iwr, interface); // Set scan options (SSID, channel, etc) here
-	if (ioctl(socket, SIOCSIWSCAN, &iwr) < 0)
+	if (ioctl(sock, SIOCSIWSCAN, &iwr) < 0)
 	{
 		// Triggering scanning is a privileged operation (root only)
 		if (errno == EPERM)
@@ -137,16 +137,20 @@ std::vector<NetworkAccessPoint> GetAccessPoints(const char interface[], int sock
 	/********************************/
 
 	// Init timeout value -> 250ms between set and first get
-	tv.tv_sec = 0;
-	tv.tv_usec = 250 * 1000; // 250ms
+	tv.tv_sec = 2;
+	tv.tv_usec = 0;
 
 	while (1)
 	{
-		if (tv.tv_usec > 0)
+		if (tv.tv_sec > 0 || tv.tv_usec > 0)
 		{
-			// Select here
-			usleep(tv.tv_usec);
-			int ret = 0;
+			// We must regenerate rfds (file descriptors for select) each time
+			fd_set rfds;
+			FD_ZERO(&rfds);
+			FD_SET(sock, &rfds); // Add the rtnetlink fd in the list
+
+			// Wait until something happens
+			int ret = select(sock + 1, &rfds, NULL, NULL, &tv);
 
 			// Check if there was an error
 			if(ret < 0)
@@ -180,6 +184,14 @@ std::vector<NetworkAccessPoint> GetAccessPoints(const char interface[], int sock
 					free(res_buf);
 				return result;
 			}
+			else
+			{
+				/********************************/
+				gettimeofday(&t_end, NULL);
+				ms = (t_end.tv_sec  - t_start.tv_sec) * 1000 + (t_end.tv_usec - t_start.tv_usec) / 1000;
+				printf("%ldms - select() timed out\n", ms);
+				/********************************/
+			}
 		}
 
 		// (Re)allocate the buffer - realloc(NULL, len) == malloc(len)
@@ -195,7 +207,7 @@ std::vector<NetworkAccessPoint> GetAccessPoints(const char interface[], int sock
 
 		// Try to read the scan results
 		SetScanParams(iwr, interface, res_buf, res_buf_len);
-		int x = ioctl(socket, SIOCGIWSCAN, &iwr);
+		int x = ioctl(sock, SIOCGIWSCAN, &iwr);
 
 		/********************************/
 		gettimeofday(&t_end, NULL);
@@ -221,7 +233,7 @@ std::vector<NetworkAccessPoint> GetAccessPoints(const char interface[], int sock
 				else
 					res_buf_len *= 2;
 				fprintf(stderr, "DEBUG: Scan results did not fit - trying larger buffer (%lu bytes)\n", (unsigned long)res_buf_len);
-				tv.tv_usec = 0; // Use the same results, don't try to get new ones
+				tv.tv_sec = tv.tv_usec = 0; // Use the same results, don't try to get new ones
 				continue;
 			}
 			else
@@ -230,7 +242,8 @@ std::vector<NetworkAccessPoint> GetAccessPoints(const char interface[], int sock
 		else if (errno == EAGAIN)
 		{
 			// Restart timer for only 100ms
-			tv.tv_usec = 100 * 1000; // 100ms
+			tv.tv_sec = 1;
+			tv.tv_usec = 0;
 			timeout -= tv.tv_usec;
 			if (timeout >= 0)
 				continue;
