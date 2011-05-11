@@ -8,12 +8,12 @@
 
 //#include <time.h>
 
-// First install libnl-devel
-#include <netlink/genl/genl.h>
-#include <netlink/genl/family.h>
-#include <netlink/genl/ctrl.h>
-#include <netlink/msg.h>
-#include <netlink/attr.h>
+// First install libnl-dev
+//#include <netlink/genl/genl.h>
+//#include <netlink/genl/family.h>
+//#include <netlink/genl/ctrl.h>
+//#include <netlink/msg.h>
+//#include <netlink/attr.h>
 
 #include "NetworkAccessPoint.h"
 #include "nl80211.h"
