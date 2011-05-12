@@ -100,12 +100,13 @@ static void nl80211_cleanup(struct nl80211_state *state)
 
 static int print_sta_handler(struct nl_msg *msg, void *arg)
 {
-	// TODO: Process message here
+	fprintf(stderr, "Print handler\n");
 	return NL_SKIP;
 }
 
 static int error_handler(struct sockaddr_nl *nla, struct nlmsgerr *err, void *arg)
 {
+	fprintf(stderr, "Error handler\n");
 	int *ret = (int*) arg;
 	*ret = err->error;
 	return NL_STOP;
@@ -113,6 +114,7 @@ static int error_handler(struct sockaddr_nl *nla, struct nlmsgerr *err, void *ar
 
 static int finish_handler(struct nl_msg *msg, void *arg)
 {
+	fprintf(stderr, "Finish handler\n");
 	int *ret = (int*) arg;
 	*ret = 0;
 	return NL_SKIP;
@@ -120,6 +122,7 @@ static int finish_handler(struct nl_msg *msg, void *arg)
 
 static int ack_handler(struct nl_msg *msg, void *arg)
 {
+	fprintf(stderr, "Ack handler\n");
 	int *ret = (int*) arg;
 	*ret = 0;
 	return NL_STOP;
