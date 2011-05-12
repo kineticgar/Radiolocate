@@ -317,5 +317,6 @@ int main()
 	printf("Min: %d\n", min);
 	printf("Max: %d\n", max);
 
+	// Statistics were <407, 427, 445>
 	return 0;
 }
