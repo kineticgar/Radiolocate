@@ -149,10 +149,14 @@ static int print_sta_handler(struct nl_msg *msg, void *arg)
 
 	// Print the station info
 	char mac_addr[20], dev[20];
-	unsigned char *byte = (unsigned char*) nla_data(tb[NL80211_ATTR_MAC]);
+	unsigned char *byte = (unsigned char*)nla_data(tb[NL80211_ATTR_MAC]);
 	snprintf(mac_addr, sizeof(mac_addr), "%hhX:%hhX:%hhX:%hhX:%hhX:%hhX", byte[0], byte[1], byte[2], byte[3], byte[4], byte[5]);
 	if_indextoname(nla_get_u32(tb[NL80211_ATTR_IFINDEX]), dev);
-	printf("Station %s (on %s)", mac_addr, dev);
+	printf("Station %s (on %s)\n", mac_addr, dev);
+
+	// Print the signal strength
+	if (sinfo[NL80211_STA_INFO_SIGNAL])
+		printf("Signal strength: %d dBm\n", (int8_t)nla_get_u8(sinfo[NL80211_STA_INFO_SIGNAL]));
 
 	return NL_SKIP;
 }
