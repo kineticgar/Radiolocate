@@ -9,7 +9,7 @@
 // Undefine this to lookup the device by physical name
 #define ID_BY_IFNAME
 
-//#include <time.h>
+#include <time.h>
 #ifdef ID_BY_IFNAME
 	#include <net/if.h>
 #else
@@ -56,6 +56,8 @@ struct nl80211_state {
 	struct genl_family *nl80211;
 };
 
+struct timeval start, stop;
+
 static bool nl80211_init(struct nl80211_state *state)
 {
 	// Allocate a new socket
@@ -100,8 +102,6 @@ static void nl80211_cleanup(struct nl80211_state *state)
 
 static int print_sta_handler(struct nl_msg *msg, void *arg)
 {
-	fprintf(stderr, "Print handler\n");
-
 	struct nlattr *tb[NL80211_ATTR_MAX + 1];
 	struct genlmsghdr *gnlh = (genlmsghdr*) nlmsg_data(nlmsg_hdr(msg));
 	struct nlattr *sinfo[NL80211_STA_INFO_MAX + 1];
@@ -158,12 +158,13 @@ static int print_sta_handler(struct nl_msg *msg, void *arg)
 	if (sinfo[NL80211_STA_INFO_SIGNAL])
 		printf("Signal strength: %d dBm\n", (int8_t)nla_get_u8(sinfo[NL80211_STA_INFO_SIGNAL]));
 
+	gettimeofday(&stop, NULL);
 	return NL_SKIP;
 }
 
 static int error_handler(struct sockaddr_nl *nla, struct nlmsgerr *err, void *arg)
 {
-	fprintf(stderr, "Error handler\n");
+	printf("Error handler\n");
 	int *ret = (int*) arg;
 	*ret = err->error;
 	return NL_STOP;
@@ -171,7 +172,7 @@ static int error_handler(struct sockaddr_nl *nla, struct nlmsgerr *err, void *ar
 
 static int finish_handler(struct nl_msg *msg, void *arg)
 {
-	fprintf(stderr, "Finish handler\n");
+	printf("Finish handler\n");
 	int *ret = (int*) arg;
 	*ret = 0;
 	return NL_SKIP;
@@ -179,7 +180,7 @@ static int finish_handler(struct nl_msg *msg, void *arg)
 
 static int ack_handler(struct nl_msg *msg, void *arg)
 {
-	fprintf(stderr, "Ack handler\n");
+	printf("Ack handler\n");
 	int *ret = (int*) arg;
 	*ret = 0;
 	return NL_STOP;
@@ -208,13 +209,14 @@ static int phy_lookup(const char *name)
 }
 #endif // ID_BY_IFNAME
 
-int main()
+
+static int init_scan(void)
 {
 	struct nl80211_state nlstate;
 	struct nl_cb *cb;
 	struct nl_cb *s_cb;
 	struct nl_msg *msg;
-	const bool debug = true;
+	const bool debug = false;
 
 	if (!nl80211_init(&nlstate))
 		return -1;
@@ -279,16 +281,41 @@ int main()
 	nlmsg_free(msg);
 
 	nl80211_cleanup(&nlstate);
-/*
-	struct timeval start, end;
-	gettimeofday(&start, NULL);
+	return 0;
+}
 
-	std::vector<NetworkAccessPoint> accessPoints;
+int main()
+{
+	const int count = 10;
+	int t[count], avg = 0, min = 999999, max = 0;
+	for (int i = 0; i < count; ++i)
+	{
+		gettimeofday(&start, NULL);
+		if (init_scan() != 0)
+		{
+			printf("Scan failed, aborting.\n");
+			return -1;
+		}
+		usleep(1000 * 1000); // 1s
 
-	gettimeofday(&end, NULL);
-	long ms = (end.tv_sec  - start.tv_sec) * 1000 + (end.tv_usec - start.tv_usec) / 1000;
+		int ms = stop.tv_usec - start.tv_usec;
+		printf("Scanning time: %d us\n", ms);
+		t[i] = ms;
+	}
+	for (int i = 0; i < count; ++i)
+	{
+		if (t[i] < min)
+			min = t[i];
+		if (t[i] > max)
+			max = t[i];
+		avg += t[i];
+	}
+	avg /= count;
 
-	printf("Scanning took %ldms\n", ms);
-*/
+	printf("Statistics\n");
+	printf("Average: %d us\n", avg);
+	printf("Min: %d\n", min);
+	printf("Max: %d\n", max);
+
 	return 0;
 }
