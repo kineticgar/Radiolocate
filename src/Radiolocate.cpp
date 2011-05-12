@@ -6,7 +6,15 @@
 // Description : Real-time locating system by radiation analysis
 //============================================================================
 
+// Undefine this to lookup the device by physical name
+#define ID_BY_IFNAME
+
 //#include <time.h>
+#ifdef ID_BY_IFNAME
+	#include <net/if.h>
+#else
+	#include <fcntl.h>
+#endif
 
 // First install libnl-dev
 #include <netlink/genl/genl.h>
@@ -40,7 +48,7 @@ static inline int __genl_ctrl_alloc_cache(struct nl_sock *h, struct nl_cache **c
 	return 0;
 }
 #define genl_ctrl_alloc_cache __genl_ctrl_alloc_cache
-#endif /* CONFIG_LIBNL20 */
+#endif // CONFIG_LIBNL20
 
 struct nl80211_state {
 	struct nl_sock *nl_sock;
@@ -90,6 +98,56 @@ static void nl80211_cleanup(struct nl80211_state *state)
 	nl_socket_free(state->nl_sock);
 }
 
+static int print_sta_handler(struct nl_msg *msg, void *arg)
+{
+	// TODO: Process message here
+	return NL_SKIP;
+}
+
+static int error_handler(struct sockaddr_nl *nla, struct nlmsgerr *err, void *arg)
+{
+	int *ret = (int*) arg;
+	*ret = err->error;
+	return NL_STOP;
+}
+
+static int finish_handler(struct nl_msg *msg, void *arg)
+{
+	int *ret = (int*) arg;
+	*ret = 0;
+	return NL_SKIP;
+}
+
+static int ack_handler(struct nl_msg *msg, void *arg)
+{
+	int *ret = (int*) arg;
+	*ret = 0;
+	return NL_STOP;
+}
+
+#ifndef ID_BY_IFNAME
+// Converts a physical interface name (e.g. phy0) into an index
+static int phy_lookup(const char *name)
+{
+	char buf[200];
+	int fd, pos;
+
+	snprintf(buf, sizeof(buf), "/sys/class/ieee80211/%s/index", name);
+
+	fd = open(buf, O_RDONLY);
+	if (fd < 0)
+		return -1;
+	pos = read(fd, buf, sizeof(buf) - 1);
+	if (pos < 0) {
+		close(fd);
+		return -1;
+	}
+	buf[pos] = '\0';
+	close(fd);
+	return atoi(buf);
+}
+#endif // ID_BY_IFNAME
+
 int main()
 {
 	struct nl80211_state nlstate;
@@ -121,11 +179,47 @@ int main()
 		return -1;
 	}
 
-	// Add generic netlink header to netlink message
-	genlmsg_put(msg, 0, 0, genl_family_get_id(state->nl80211), 0, NLM_F_DUMP, NL80211_CMD_GET_STATION, 0);
+	// Add generic netlink header to the netlink message
+	genlmsg_put(msg, 0, 0, genl_family_get_id(nlstate.nl80211), 0, NLM_F_DUMP, NL80211_CMD_GET_STATION, 0);
+
+	// Add 32 bit integer attribute to the netlink message
+#ifdef ID_BY_IFNAME
+	if (nla_put_u32(msg, NL80211_ATTR_IFINDEX, if_nametoindex("wlan0")) != 0)
+#else
+	if (nla_put_u32(msg, NL80211_ATTR_WIPHY, phy_lookup("phy0")) != 0)
+#endif
+	{
+		fprintf(stderr, "Building message failed.\n");
+		return -1;
+	}
+
+	// Set up the callbacks
+	nl_cb_set(cb, NL_CB_VALID, NL_CB_CUSTOM, print_sta_handler, NULL);
+	nl_socket_set_cb((nl_handle*) nlstate.nl_sock, s_cb);
+
+	// Automatically complete and send the netlink message
+	if (nl_send_auto_complete((nl_handle*) nlstate.nl_sock, msg) < 0)
+	{
+		fprintf(stderr, "Sending netlink message failed.\n");
+		nl_cb_put(cb);
+		nlmsg_free(msg);
+		return -1;
+	}
+
+	int err = 1;
+	nl_cb_err(cb, NL_CB_CUSTOM, error_handler, &err);
+	nl_cb_set(cb, NL_CB_FINISH, NL_CB_CUSTOM, finish_handler, &err);
+	nl_cb_set(cb, NL_CB_ACK, NL_CB_CUSTOM, ack_handler, &err);
+
+	// Receive a set of messages from the netlink socket
+	while (err > 0)
+		nl_recvmsgs((nl_handle*) nlstate.nl_sock, cb);
+
+	nl_cb_put(cb);
+	nlmsg_free(msg);
 
 	nl80211_cleanup(&nlstate);
-
+/*
 	struct timeval start, end;
 	gettimeofday(&start, NULL);
 
@@ -135,6 +229,6 @@ int main()
 	long ms = (end.tv_sec  - start.tv_sec) * 1000 + (end.tv_usec - start.tv_usec) / 1000;
 
 	printf("Scanning took %ldms\n", ms);
-
+*/
 	return 0;
 }
