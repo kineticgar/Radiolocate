@@ -176,7 +176,6 @@ static int print_sta_handler(struct nl_msg *msg, void *arg)
 
 static int error_handler(struct sockaddr_nl *nla, struct nlmsgerr *err, void *arg)
 {
-	printf("Error handler\n");
 	int *ret = (int*) arg;
 	*ret = err->error;
 	return NL_STOP;
@@ -184,7 +183,6 @@ static int error_handler(struct sockaddr_nl *nla, struct nlmsgerr *err, void *ar
 
 static int finish_handler(struct nl_msg *msg, void *arg)
 {
-	printf("Finish handler\n");
 	int *ret = (int*) arg;
 	*ret = 0;
 	return NL_SKIP;
@@ -214,7 +212,7 @@ static int phy_lookup(const char *name)
 #endif // ID_BY_IFNAME
 
 
-static int init_scan(void)
+static int do_scan(void)
 {
 	struct nl80211_state nlstate;
 	struct nl_cb *cb;
@@ -289,57 +287,41 @@ static int init_scan(void)
 
 int main()
 {
-	const int count = 10;
-	const int interval = 1000; // 1ms
-	int sig[count], t[count], avg = 0, min = 999999, max = 0;
-	struct timeval init, start, stop, last;
+	const int sleep_interval = 1000; // microseconds
+	const int duration = 5; // seconds
+	int prev_signal_strength;
+	g_signal_strength = 0;
+	struct timeval init, cur_time, last;
 	gettimeofday(&init, NULL);
+
+	// Get an initial signal strength value
+	if (do_scan() != 0 || g_signal_strength == 0)
+	{
+		printf("Initial scan failed, aborting.\n");
+		return -1;
+	}
+	printf("Signal strength: %d dBm\n", g_signal_strength);
+	prev_signal_strength = g_signal_strength;
 	gettimeofday(&last, NULL);
 
-	for (int i = 0; i < count; ++i)
+	do
 	{
-		g_signal_strength = 0;
-
-		int us;
-		gettimeofday(&start, NULL);
-		if (init_scan() != 0)
+		usleep(sleep_interval);
+		if (do_scan() != 0)
 		{
 			printf("Scan failed, aborting.\n");
 			return -1;
 		}
-		gettimeofday(&stop, NULL);
 
-		us = stop.tv_usec - start.tv_usec;
-		printf("SIGNAL STRENGTH: %d dBm\n", g_signal_strength);
-		printf("Scan time: %d us\n", us);
-		sig[i] = g_signal_strength;
-		t[i] = us;
-
-		// printf takes a non-negligible amount of time
-		gettimeofday(&stop, NULL);
-		int offset = stop.tv_usec - (init.tv_usec + i * interval);
-		if (offset < interval)
+		gettimeofday(&cur_time, NULL);
+		if (prev_signal_strength != g_signal_strength)
 		{
-			printf("Sleeping for %d us (about %d us)\n", interval - offset, interval - us);
-			usleep(interval - offset);
+			int ms = (cur_time.tv_sec - last.tv_sec) * 1000 + (cur_time.tv_usec - last.tv_usec) / 1000;
+			printf("Signal strength: %d dBm (Scan: %d ms)\n", g_signal_strength, ms);
+			gettimeofday(&last, NULL);
+			prev_signal_strength = g_signal_strength;
 		}
-		else
-			printf("Insomnia: %d us ahead\n", offset - interval);
-	}
-	for (int i = 0; i < count; ++i)
-	{
-		if (t[i] < min)
-			min = t[i];
-		if (t[i] > max)
-			max = t[i];
-		avg += t[i];
-	}
-	avg /= count;
-
-	printf("Statistics\n");
-	printf("Average: %d us\n", avg);
-	printf("Min: %d\n", min);
-	printf("Max: %d\n", max);
+	} while (cur_time.tv_sec <= init.tv_sec + duration || cur_time.tv_usec < init.tv_usec);
 
 	return 0;
 }
