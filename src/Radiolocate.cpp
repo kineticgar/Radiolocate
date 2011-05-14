@@ -9,8 +9,8 @@
 // Undefine this to lookup the device by physical name
 #define ID_BY_IFNAME
 
-#include <time.h>   // for gettimeofday
-#include <unistd.h> // for usleep
+#include <time.h>   // for gettimeofday()
+#include <unistd.h> // for usleep()
 #ifdef ID_BY_IFNAME
 	#include <net/if.h>
 #else
@@ -320,7 +320,7 @@ int main()
 		}
 	} while (cur_time.tv_sec <= init.tv_sec + duration || cur_time.tv_usec < init.tv_usec);
 
-	// Result: On my Asus, the driver refreshes the signal strength value every 100ms
+	// Result: Drivers refresh the signal strength every 100ms
 
 	return 0;
 }
