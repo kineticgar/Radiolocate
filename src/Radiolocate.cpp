@@ -21,7 +21,6 @@
 #include <netlink/genl/family.h>
 #include <netlink/genl/ctrl.h>
 
-#include "NetworkAccessPoint.h"
 #include "nl80211.h"
 
 using namespace std;
