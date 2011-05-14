@@ -6,6 +6,9 @@
 //               http://dev.linuxfoundation.org/moblin-navigator/browse/interface.php?cmd=list-bylibrary&Lid=318&changever=2.0_proposed
 //============================================================================
 
+// Undefine this to lookup the device by physical name
+#define ID_BY_IFNAME
+
 #include <time.h>
 #ifdef ID_BY_IFNAME
 	#include <net/if.h>
@@ -19,9 +22,6 @@
 #include <netlink/genl/ctrl.h>
 
 #include "nl80211.h"
-
-// Undefine this to lookup the device by physical name
-#define ID_BY_IFNAME
 
 using namespace std;
 
@@ -56,7 +56,7 @@ static inline int __genl_ctrl_alloc_cache(struct nl_sock *h, struct nl_cache **c
 
 
 /*******************
- *  nl80211 state  *
+ *  nl80211_state  *
  *******************/
 struct nl80211_state {
 	struct nl_sock *nl_sock;
@@ -111,6 +111,8 @@ static void nl80211_cleanup(struct nl80211_state *state)
  *******************************/
 static int print_sta_handler(struct nl_msg *msg, void *arg)
 {
+	// Normally, the array's size would be NL80211_ATTR_MAX + 1
+	// We use:
 	struct nlattr *tb[NL80211_ATTR_MAX + 1];
 	struct genlmsghdr *gnlh = (genlmsghdr*) nlmsg_data(nlmsg_hdr(msg));
 	struct nlattr *sinfo[NL80211_STA_INFO_MAX + 1];
@@ -156,13 +158,13 @@ static int print_sta_handler(struct nl_msg *msg, void *arg)
 	}
 
 	// Print the station info
-	/*
+	/**/
 	char mac_addr[20], dev[20];
 	unsigned char *byte = (unsigned char*)nla_data(tb[NL80211_ATTR_MAC]);
 	snprintf(mac_addr, sizeof(mac_addr), "%hhX:%hhX:%hhX:%hhX:%hhX:%hhX", byte[0], byte[1], byte[2], byte[3], byte[4], byte[5]);
 	if_indextoname(nla_get_u32(tb[NL80211_ATTR_IFINDEX]), dev);
 	printf("Station %s (on %s)\n", mac_addr, dev);
-	*/
+	/**/
 
 	// Print the signal strength
 	if (sinfo[NL80211_STA_INFO_SIGNAL])
