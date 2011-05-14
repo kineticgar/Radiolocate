@@ -25,6 +25,7 @@
 
 using namespace std;
 
+// Stores the result of the scan
 int g_signal_strength = 0;
 
 /**********************************
