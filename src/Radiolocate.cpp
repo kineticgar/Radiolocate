@@ -323,6 +323,8 @@ int main()
 		}
 	} while (cur_time.tv_sec <= init.tv_sec + duration || cur_time.tv_usec < init.tv_usec);
 
+	// Result: On my Asus, the driver refreshes the signal strength value every 100ms
+
 	return 0;
 }
 
