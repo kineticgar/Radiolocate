@@ -9,7 +9,8 @@
 // Undefine this to lookup the device by physical name
 #define ID_BY_IFNAME
 
-#include <time.h>
+#include <time.h>   // for gettimeofday
+#include <unistd.h> // for usleep
 #ifdef ID_BY_IFNAME
 	#include <net/if.h>
 #else
@@ -111,32 +112,23 @@ static void nl80211_cleanup(struct nl80211_state *state)
  *******************************/
 static int print_sta_handler(struct nl_msg *msg, void *arg)
 {
-	// Normally, the array's size would be NL80211_ATTR_MAX + 1
-	// We use:
-	struct nlattr *tb[NL80211_ATTR_MAX + 1];
+	// Normally tb_max would be NL80211_ATTR_MAX. CHANGE THIS IF NECESSARY
+	const int tb_max = NL80211_ATTR_STA_INFO;
+	struct nlattr *tb[tb_max + 1];
 	struct genlmsghdr *gnlh = (genlmsghdr*) nlmsg_data(nlmsg_hdr(msg));
-	struct nlattr *sinfo[NL80211_STA_INFO_MAX + 1];
-	static struct nla_policy stats_policy[NL80211_STA_INFO_MAX + 1];
+	// Normally sinfo_max would be NL80211_STA_INFO_MAX. CHANGE THIS IF NECESSARY
+	const int sinfo_max = NL80211_STA_INFO_SIGNAL;
+	struct nlattr *sinfo[sinfo_max + 1];
+	static struct nla_policy stats_policy[sinfo_max + 1];
 	memset(stats_policy, 0, sizeof(stats_policy));
-	stats_policy[NL80211_STA_INFO_INACTIVE_TIME].type = NLA_U32;
-	stats_policy[NL80211_STA_INFO_RX_BYTES].type = NLA_U32;
-	stats_policy[NL80211_STA_INFO_TX_BYTES].type = NLA_U32;
-	stats_policy[NL80211_STA_INFO_RX_PACKETS].type = NLA_U32;
-	stats_policy[NL80211_STA_INFO_TX_PACKETS].type = NLA_U32;
 	stats_policy[NL80211_STA_INFO_SIGNAL].type = NLA_U8;
-	stats_policy[NL80211_STA_INFO_TX_BITRATE].type = NLA_NESTED;
-	stats_policy[NL80211_STA_INFO_LLID].type = NLA_U16;
-	stats_policy[NL80211_STA_INFO_PLID].type = NLA_U16;
-	stats_policy[NL80211_STA_INFO_PLINK_STATE].type = NLA_U8;
-	stats_policy[NL80211_STA_INFO_TX_RETRIES].type = NLA_U32;
-	stats_policy[NL80211_STA_INFO_TX_FAILED].type = NLA_U32;
 
 	// Create attribute index based on stream of attributes.
 	// Iterates over the stream of attributes and stores a pointer to each
 	// attribute in the index array using the attribute type as index to the
 	// array. Attribute with a type greater than the maximum type specified
 	// will be silently ignored in order to maintain backwards compatibility.
-	nla_parse(tb, NL80211_ATTR_MAX, genlmsg_attrdata(gnlh, 0), genlmsg_attrlen(gnlh, 0), NULL);
+	nla_parse(tb, tb_max, genlmsg_attrdata(gnlh, 0), genlmsg_attrlen(gnlh, 0), NULL);
 
 	/*
 	 * TODO (from iw scan.c): validate the interface and mac address!
@@ -151,20 +143,23 @@ static int print_sta_handler(struct nl_msg *msg, void *arg)
 	}
 	// Create attribute index based on nested attribute.
 	// Feeds the stream of attributes nested into the specified attribute to nla_parse().
-	if (nla_parse_nested(sinfo, NL80211_STA_INFO_MAX, tb[NL80211_ATTR_STA_INFO], stats_policy))
+	if (nla_parse_nested(sinfo, sinfo_max, tb[NL80211_ATTR_STA_INFO], stats_policy))
 	{
 		fprintf(stderr, "Failed to parse nested attributes!\n");
 		return NL_SKIP;
 	}
 
+	/*
 	// Print the station info
-	/**/
+	// TODO: use NL80211_ATTR_IFNAME so we don't rely on if_indextoname()
+#ifdef ID_BY_IFNAME
 	char mac_addr[20], dev[20];
 	unsigned char *byte = (unsigned char*)nla_data(tb[NL80211_ATTR_MAC]);
 	snprintf(mac_addr, sizeof(mac_addr), "%hhX:%hhX:%hhX:%hhX:%hhX:%hhX", byte[0], byte[1], byte[2], byte[3], byte[4], byte[5]);
-	if_indextoname(nla_get_u32(tb[NL80211_ATTR_IFINDEX]), dev);
+	if_indextoname(nla_get_u32(tb[NL80211_ATTR_IFINDEX]), dev); // could also use NL80211_ATTR_IFNAME
 	printf("Station %s (on %s)\n", mac_addr, dev);
-	/**/
+#endif
+	*/
 
 	// Print the signal strength
 	if (sinfo[NL80211_STA_INFO_SIGNAL])
