@@ -16,7 +16,7 @@
 	#include <fcntl.h>
 #endif
 
-// First install libnl-dev
+// Install libnl-dev first
 #include <netlink/genl/genl.h>
 #include <netlink/genl/family.h>
 #include <netlink/genl/ctrl.h>
@@ -26,7 +26,11 @@
 
 using namespace std;
 
-/* libnl 2.0 compatibility code */
+int g_signal_strength = 0;
+
+/**********************************
+ *  libnl 2.0 compatibility code  *
+ **********************************/
 #ifndef CONFIG_LIBNL20
 
 static inline struct nl_handle *nl_socket_alloc(void)
@@ -50,13 +54,15 @@ static inline int __genl_ctrl_alloc_cache(struct nl_sock *h, struct nl_cache **c
 #define genl_ctrl_alloc_cache __genl_ctrl_alloc_cache
 #endif // CONFIG_LIBNL20
 
+
+/*******************
+ *  nl80211 state  *
+ *******************/
 struct nl80211_state {
 	struct nl_sock *nl_sock;
 	struct nl_cache *nl_cache;
 	struct genl_family *nl80211;
 };
-
-struct timeval start, stop;
 
 static bool nl80211_init(struct nl80211_state *state)
 {
@@ -100,12 +106,14 @@ static void nl80211_cleanup(struct nl80211_state *state)
 	nl_socket_free(state->nl_sock);
 }
 
+/*******************************
+ *  nl80211 callback handlers  *
+ *******************************/
 static int print_sta_handler(struct nl_msg *msg, void *arg)
 {
 	struct nlattr *tb[NL80211_ATTR_MAX + 1];
 	struct genlmsghdr *gnlh = (genlmsghdr*) nlmsg_data(nlmsg_hdr(msg));
 	struct nlattr *sinfo[NL80211_STA_INFO_MAX + 1];
-	/**/
 	static struct nla_policy stats_policy[NL80211_STA_INFO_MAX + 1];
 	memset(stats_policy, 0, sizeof(stats_policy));
 	stats_policy[NL80211_STA_INFO_INACTIVE_TIME].type = NLA_U32;
@@ -148,17 +156,21 @@ static int print_sta_handler(struct nl_msg *msg, void *arg)
 	}
 
 	// Print the station info
+	/*
 	char mac_addr[20], dev[20];
 	unsigned char *byte = (unsigned char*)nla_data(tb[NL80211_ATTR_MAC]);
 	snprintf(mac_addr, sizeof(mac_addr), "%hhX:%hhX:%hhX:%hhX:%hhX:%hhX", byte[0], byte[1], byte[2], byte[3], byte[4], byte[5]);
 	if_indextoname(nla_get_u32(tb[NL80211_ATTR_IFINDEX]), dev);
 	printf("Station %s (on %s)\n", mac_addr, dev);
+	*/
 
 	// Print the signal strength
 	if (sinfo[NL80211_STA_INFO_SIGNAL])
-		printf("Signal strength: %d dBm\n", (int8_t)nla_get_u8(sinfo[NL80211_STA_INFO_SIGNAL]));
+	{
+		//printf("SIGNAL STRENGTH: %d dBm\n", (int8_t)nla_get_u8(sinfo[NL80211_STA_INFO_SIGNAL]));
+		g_signal_strength = (int8_t)nla_get_u8(sinfo[NL80211_STA_INFO_SIGNAL]);
+	}
 
-	gettimeofday(&stop, NULL);
 	return NL_SKIP;
 }
 
@@ -176,14 +188,6 @@ static int finish_handler(struct nl_msg *msg, void *arg)
 	int *ret = (int*) arg;
 	*ret = 0;
 	return NL_SKIP;
-}
-
-static int ack_handler(struct nl_msg *msg, void *arg)
-{
-	printf("Ack handler\n");
-	int *ret = (int*) arg;
-	*ret = 0;
-	return NL_STOP;
 }
 
 #ifndef ID_BY_IFNAME
@@ -238,7 +242,7 @@ static int init_scan(void)
 		fprintf(stderr, "Failed to allocate netlink callbacks.\n");
 		// Release the reference from the netlink message
 		nlmsg_free(msg);
-		return -1;
+		return 2;
 	}
 
 	// Add generic netlink header to the netlink message
@@ -252,7 +256,7 @@ static int init_scan(void)
 #endif
 	{
 		fprintf(stderr, "Building message failed.\n");
-		return -1;
+		return 2;
 	}
 
 	// Set up the callbacks
@@ -271,7 +275,6 @@ static int init_scan(void)
 	int err = 1;
 	nl_cb_err(cb, NL_CB_CUSTOM, error_handler, &err);
 	nl_cb_set(cb, NL_CB_FINISH, NL_CB_CUSTOM, finish_handler, &err);
-	nl_cb_set(cb, NL_CB_ACK, NL_CB_CUSTOM, ack_handler, &err);
 
 	// Receive a set of messages from the netlink socket
 	while (err > 0)
@@ -281,26 +284,47 @@ static int init_scan(void)
 	nlmsg_free(msg);
 
 	nl80211_cleanup(&nlstate);
-	return 0;
+	return err;
 }
 
 int main()
 {
 	const int count = 10;
-	int t[count], avg = 0, min = 999999, max = 0;
+	const int interval = 1000; // 1ms
+	int sig[count], t[count], avg = 0, min = 999999, max = 0;
+	struct timeval init, start, stop, last;
+	gettimeofday(&init, NULL);
+	gettimeofday(&last, NULL);
+
 	for (int i = 0; i < count; ++i)
 	{
+		g_signal_strength = 0;
+
+		int us;
 		gettimeofday(&start, NULL);
 		if (init_scan() != 0)
 		{
 			printf("Scan failed, aborting.\n");
 			return -1;
 		}
-		usleep(1000 * 1000); // 1s
+		gettimeofday(&stop, NULL);
 
-		int ms = stop.tv_usec - start.tv_usec;
-		printf("Scanning time: %d us\n", ms);
-		t[i] = ms;
+		us = stop.tv_usec - start.tv_usec;
+		printf("SIGNAL STRENGTH: %d dBm\n", g_signal_strength);
+		printf("Scan time: %d us\n", us);
+		sig[i] = g_signal_strength;
+		t[i] = us;
+
+		// printf takes a non-negligible amount of time
+		gettimeofday(&stop, NULL);
+		int offset = stop.tv_usec - (init.tv_usec + i * interval);
+		if (offset < interval)
+		{
+			printf("Sleeping for %d us (about %d us)\n", interval - offset, interval - us);
+			usleep(interval - offset);
+		}
+		else
+			printf("Insomnia: %d us ahead\n", offset - interval);
 	}
 	for (int i = 0; i < count; ++i)
 	{
@@ -317,6 +341,6 @@ int main()
 	printf("Min: %d\n", min);
 	printf("Max: %d\n", max);
 
-	// Statistics were <407, 427, 445>
 	return 0;
 }
+
