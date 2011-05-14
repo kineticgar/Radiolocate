@@ -1,9 +1,9 @@
 //============================================================================
 // Name        : Radiolocate.cpp
-// Author      : 
-// Version     :
-// Copyright   : Copyright (C) 2011 Garrett Brown <gbruin@ucla.edu>
+// Copyright   : Copyright (C) 2011 Garrett Brown <garbearucla@gmail.com>
 // Description : Real-time locating system by radiation analysis
+//               Comprehensive nl80211 interface reference:
+//               http://dev.linuxfoundation.org/moblin-navigator/browse/interface.php?cmd=list-bylibrary&Lid=318&changever=2.0_proposed
 //============================================================================
 
 #include <time.h>
