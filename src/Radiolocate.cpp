@@ -6,9 +6,6 @@
 // Description : Real-time locating system by radiation analysis
 //============================================================================
 
-// Undefine this to lookup the device by physical name
-#define ID_BY_IFNAME
-
 #include <time.h>
 #ifdef ID_BY_IFNAME
 	#include <net/if.h>
@@ -22,6 +19,9 @@
 #include <netlink/genl/ctrl.h>
 
 #include "nl80211.h"
+
+// Undefine this to lookup the device by physical name
+#define ID_BY_IFNAME
 
 using namespace std;
 
